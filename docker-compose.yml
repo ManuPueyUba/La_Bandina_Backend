@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: la_bandina_db
+    environment:
+      POSTGRES_DB: la_bandina_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - la_bandina_network
+
+  # FastAPI Application
+  api:
+    build: .
+    container_name: la_bandina_api
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres123@db:5432/la_bandina_db
+      SECRET_KEY: super-secret-key-change-this-in-production-123456789
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      API_V1_STR: /api/v1
+      PROJECT_NAME: La Bandina API
+      CORS_ORIGINS: '["http://localhost:3000", "http://localhost:3001", "http://localhost:8080"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    networks:
+      - la_bandina_network
+
+volumes:
+  postgres_data:
+
+networks:
+  la_bandina_network:
+    driver: bridge
