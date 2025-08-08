@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import io
 
 from app.core.database import get_db
@@ -22,6 +22,55 @@ from app.schemas.song import (
 router = APIRouter()
 song_service = SongService()
 midi_processor = MidiProcessorService()
+
+
+def process_notes_for_chords(notes: List[Dict[str, Any]], tolerance_ms: int = 100) -> List[Dict[str, Any]]:
+    """
+    Agrupa notas que empiezan al mismo tiempo (o casi) como acordes.
+    Similar a la función chord-processor.ts del frontend.
+    """
+    if len(notes) == 0:
+        return notes
+    
+    # Ordenar notas por tiempo de inicio
+    sorted_notes = sorted(notes, key=lambda n: n['start_time'])
+    
+    processed_notes = []
+    i = 0
+    
+    while i < len(sorted_notes):
+        current_note = sorted_notes[i]
+        simultaneous_notes = [current_note]
+        
+        # Buscar notas que empiecen al mismo tiempo (dentro de la tolerancia)
+        for j in range(i + 1, len(sorted_notes)):
+            next_note = sorted_notes[j]
+            time_difference = abs(next_note['start_time'] - current_note['start_time'])
+            
+            if time_difference <= tolerance_ms:
+                simultaneous_notes.append(next_note)
+            else:
+                break  # Las siguientes notas ya no son simultáneas
+        
+        if len(simultaneous_notes) > 1:
+            # Es un acorde - ajustar todas las notas para que empiecen exactamente al mismo tiempo
+            earliest_start_time = min(n['start_time'] for n in simultaneous_notes)
+            longest_duration = max(n['duration'] for n in simultaneous_notes)
+            
+            # Crear notas del acorde con el mismo startTime y duración
+            for note in simultaneous_notes:
+                processed_notes.append({
+                    "key": note['key'],
+                    "start_time": earliest_start_time,
+                    "duration": longest_duration  # Usar la duración más larga para el acorde
+                })
+        else:
+            # Nota individual
+            processed_notes.append(current_note)
+        
+        i += len(simultaneous_notes)
+    
+    return sorted(processed_notes, key=lambda n: n['start_time'])
 
 
 # Song endpoints
@@ -148,6 +197,9 @@ def convert_recording_to_song(
                 "duration": duration
             })
         
+        # Aplicar procesamiento de acordes para agrupar notas simultáneas
+        processed_notes = process_notes_for_chords(converted_notes, tolerance_ms=100)
+        
         # Crear SongCreate con los datos convertidos
         song_data = {
             "title": title or f"{recording.title} (Tutorial)",
@@ -158,7 +210,7 @@ def convert_recording_to_song(
             "key_signature": recording.key_signature,
             "time_signature": "4/4",  # Por defecto
             "description": f"Convertido de grabación: {recording.description or recording.title}",
-            "notes": converted_notes
+            "notes": processed_notes
         }
         
         from app.schemas.song import SongCreate
