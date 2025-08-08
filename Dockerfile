@@ -14,6 +14,13 @@ RUN apt-get update \
         build-essential \
         libpq-dev \
         netcat-traditional \
+        # Audio processing dependencies for MIDI
+        libsndfile1-dev \
+        libasound2-dev \
+        portaudio19-dev \
+        libportaudio2 \
+        libfluidsynth3 \
+        fluid-soundfont-gm \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file
