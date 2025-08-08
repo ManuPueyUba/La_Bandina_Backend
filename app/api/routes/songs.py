@@ -117,6 +117,61 @@ def export_recording_to_midi(recording_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error exporting MIDI: {str(e)}")
 
 
+@router.post("/recordings/{recording_id}/convert-to-song", response_model=SongResponse)
+def convert_recording_to_song(
+    recording_id: str, 
+    title: Optional[str] = None,
+    difficulty: Optional[str] = "beginner",
+    category: Optional[str] = "Grabaciones",
+    db: Session = Depends(get_db)
+):
+    """Convert recording to song for tutorial use"""
+    recording = song_service.get_recording(db, recording_id)
+    if not recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    
+    try:
+        # Convertir RecordedNoteSchema a NoteSchema
+        converted_notes = []
+        for recorded_note in recording.notes:
+            # Combinar note + octave en key (ej: "C" + 4 = "C4")
+            key = f"{recorded_note.note}{recorded_note.octave}"
+            
+            # Calcular duration desde start_time y end_time
+            start_time = recorded_note.start_time
+            end_time = recorded_note.end_time if recorded_note.end_time else start_time + 500  # 500ms por defecto
+            duration = end_time - start_time
+            
+            converted_notes.append({
+                "key": key,
+                "start_time": start_time,
+                "duration": duration
+            })
+        
+        # Crear SongCreate con los datos convertidos
+        song_data = {
+            "title": title or f"{recording.title} (Tutorial)",
+            "artist": recording.artist,
+            "difficulty": difficulty,
+            "category": category,
+            "bpm": recording.bpm,
+            "key_signature": recording.key_signature,
+            "time_signature": "4/4",  # Por defecto
+            "description": f"Convertido de grabación: {recording.description or recording.title}",
+            "notes": converted_notes
+        }
+        
+        from app.schemas.song import SongCreate
+        song_create = SongCreate(**song_data)
+        
+        # Crear la canción
+        created_song = song_service.create_song(db, song_create)
+        return created_song
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error converting recording to song: {str(e)}")
+
+
 # MIDI processing endpoints
 @router.post("/midi/upload", response_model=MidiUploadResponse)
 async def upload_midi_file(
