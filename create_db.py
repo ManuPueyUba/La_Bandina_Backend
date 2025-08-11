@@ -2,7 +2,8 @@
 Create database tables
 """
 from app.core.database import Base, engine
-from app.models import User, Composition, KeyMapping
+from app.models.user import User
+from app.models.song import Song, Recording, MidiFile
 
 def create_tables():
     """Create all database tables"""

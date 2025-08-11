@@ -276,6 +276,7 @@ class SongService:
             filename=db_midi_file.filename,
             original_name=db_midi_file.original_name,
             file_size=db_midi_file.file_size,
+            file_path=db_midi_file.file_path,  # Agregamos el file_path
             processed=db_midi_file.processed,
             song_id=db_midi_file.song_id,
             error_message=db_midi_file.error_message,

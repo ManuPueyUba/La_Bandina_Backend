@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 import io
+import pretty_midi
 
 from app.core.database import get_db
 from app.services.song_service import SongService
@@ -13,10 +14,10 @@ from app.schemas.song import (
     RecordingResponse,
     RecordingCreate,
     MidiUploadResponse,
-    MidiAnalysisResponse,
     MidiConversionRequest,
     MidiConversionResponse,
-    MidiFileResponse
+    MidiFileResponse,
+    DifficultyLevel
 )
 
 router = APIRouter()
@@ -267,85 +268,77 @@ async def upload_midi_file(
         raise HTTPException(status_code=500, detail=f"Error uploading file: {str(e)}")
 
 
-@router.get("/midi/{file_id}/analyze", response_model=MidiAnalysisResponse)
-def analyze_midi_file(file_id: str, db: Session = Depends(get_db)):
-    """Analyze uploaded MIDI file"""
-    midi_file_record = song_service.get_midi_file(db, file_id)
-    if not midi_file_record:
-        raise HTTPException(status_code=404, detail="MIDI file not found")
-    
-    try:
-        analysis = midi_processor.analyze_midi_file(midi_file_record.file_path)
-        
-        return MidiAnalysisResponse(
-            id=file_id,
-            tracks=analysis["tracks"],
-            notes=analysis["notes"],
-            duration=analysis["duration"],
-            bpm=analysis["bpm"],
-            time_signature=analysis["time_signature"],
-            recommended_settings=analysis["recommended_settings"]
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error analyzing MIDI file: {str(e)}")
-
-
 @router.post("/midi/{file_id}/convert", response_model=MidiConversionResponse)
 def convert_midi_to_song(
     file_id: str, 
     conversion_request: MidiConversionRequest,
     db: Session = Depends(get_db)
 ):
-    """Convert MIDI file to song"""
+    """Convert MIDI file to song using the simplified processor"""
     midi_file_record = song_service.get_midi_file(db, file_id)
     if not midi_file_record:
         raise HTTPException(status_code=404, detail="MIDI file not found")
     
     try:
-        # Convert MIDI to song
-        song, processing_info = midi_processor.convert_midi_to_song(
-            midi_file_record.file_path,
-            conversion_request.title,
-            conversion_request.artist,
-            conversion_request.category,
-            conversion_request.key_signature,
-            conversion_request.difficulty,
-            conversion_request.description,
-            conversion_request.options
-        )
+        # Leer el archivo MIDI como bytes
+        with open(midi_file_record.file_path, 'rb') as f:
+            midi_bytes = f.read()
         
-        # Save song to database
-        from app.schemas.song import SongCreate, NoteSchema
+        # Usar el método estático simplificado
+        song_data = MidiProcessorService.convert_midi_to_song(midi_bytes, conversion_request)
+        
+        # Convertir las notas al formato que espera NoteSchema
+        formatted_notes = []
+        for note in song_data['notes']:
+            # Convertir pitch MIDI a nombre de nota
+            note_name = pretty_midi.note_number_to_name(note['note'])
+            
+            formatted_note = {
+                'key': note_name,
+                'start_time': note['start'],
+                'duration': note['end'] - note['start']
+            }
+            formatted_notes.append(formatted_note)
+        
+        # Crear el objeto Song para guardar en la base de datos
+        from app.schemas.song import SongCreate
         song_create = SongCreate(
-            title=song.title,
-            artist=song.artist,
-            difficulty=song.difficulty,
-            category=song.category,
-            bpm=song.bpm,
-            key_signature=song.key_signature,
-            time_signature=song.time_signature,
-            description=song.description,
-            notes=song.notes
+            title=song_data['title'],
+            artist=song_data['artist'],
+            difficulty=song_data['difficulty'] or DifficultyLevel.beginner,
+            category=song_data['category'],
+            bpm=120,  # Default BPM
+            key_signature=song_data['key_signature'],
+            description=song_data['description'],
+            notes=formatted_notes
         )
         
-        saved_song = song_service.create_song(db, song_create)
+        # Guardar en la base de datos
+        created_song = song_service.create_song(db, song_create)
         
-        # Update MIDI file record
-        song_service.update_midi_file_processed(db, file_id, saved_song.id)
+        # Actualizar registro del archivo MIDI
+        song_service.update_midi_file_processed(db, file_id, created_song.id)
         
-        # Clean up uploaded file
+        # Limpiar archivo temporal
         midi_processor.cleanup_file(midi_file_record.file_path)
         
         return MidiConversionResponse(
-            song=saved_song,
-            processing_info=processing_info
+            success=True,
+            message="MIDI file converted successfully",
+            song=SongResponse.from_orm(created_song),
+            processing_info={
+                "notes_count": len(song_data['notes']),
+                "total_duration": song_data['total_duration'],
+                "conversion_type": "simplified"
+            }
         )
         
     except Exception as e:
-        # Update MIDI file record with error
+        # Actualizar con error
         song_service.update_midi_file_processed(db, file_id, error_message=str(e))
-        raise HTTPException(status_code=500, detail=f"Error converting MIDI file: {str(e)}")
+        # Cleanup on error
+        midi_processor.cleanup_file(midi_file_record.file_path)
+        raise HTTPException(status_code=500, detail=f"Error converting MIDI: {str(e)}")
 
 
 @router.get("/midi/{file_id}", response_model=MidiFileResponse)

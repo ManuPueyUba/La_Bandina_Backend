@@ -80,16 +80,6 @@ class MidiUploadResponse(BaseModel):
     message: str
 
 
-class MidiAnalysisResponse(BaseModel):
-    id: str
-    tracks: int
-    notes: int
-    duration: int
-    bpm: int
-    time_signature: str
-    recommended_settings: Dict[str, Any]
-
-
 class MidiConversionOptions(BaseModel):
     min_octave: int = Field(4, ge=1, le=8)
     max_octave: int = Field(6, ge=1, le=8)
@@ -107,7 +97,8 @@ class MidiConversionRequest(BaseModel):
     key_signature: str = "C major"
     difficulty: Optional[DifficultyLevel] = None
     description: Optional[str] = None
-    options: MidiConversionOptions = Field(default_factory=MidiConversionOptions)
+    # Opciones son completamente opcionales - si no se proveen, se usa conversión simple
+    options: Optional[Dict[str, Any]] = None
 
 
 class MidiConversionResponse(BaseModel):
@@ -120,6 +111,7 @@ class MidiFileResponse(BaseModel):
     filename: str
     original_name: str
     file_size: int
+    file_path: str  # Agregamos el file_path
     processed: bool
     song_id: Optional[str] = None
     error_message: Optional[str] = None
