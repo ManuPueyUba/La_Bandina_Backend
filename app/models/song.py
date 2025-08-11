@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime, JSON, ForeignKey
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
@@ -24,16 +25,21 @@ class Song(Base):
 class Recording(Base):
     __tablename__ = "recordings"
 
-    id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
-    artist = Column(String(255), nullable=False)
-    duration = Column(Integer, nullable=False)  # in milliseconds
+    description = Column(Text, nullable=True)
     notes = Column(JSON, nullable=False)  # array of recorded note objects
-    bpm = Column(Integer, default=120)
-    key_signature = Column(String(20), default="C major")
-    description = Column(Text)
+    duration = Column(Integer, nullable=False)  # in milliseconds
+    tempo = Column(Integer, default=120)  # BPM
+    category = Column(String(50), default="personal")  # personal, practice, composition, cover, improvisation
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Foreign Keys
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Relationships
+    user = relationship("User", back_populates="recordings")
 
 
 class MidiFile(Base):

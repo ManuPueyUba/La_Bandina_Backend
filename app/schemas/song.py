@@ -119,3 +119,42 @@ class MidiFileResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Recording schemas
+class RecordingBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    notes: List[RecordedNoteSchema] = Field(..., min_items=1)
+    duration: int = Field(..., gt=0)
+    tempo: int = Field(120, ge=60, le=200)
+    category: str = Field("personal")
+
+
+class RecordingCreate(RecordingBase):
+    pass
+
+
+class RecordingUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    tempo: Optional[int] = Field(None, ge=60, le=200)
+    category: Optional[str] = None
+
+
+class RecordingResponse(RecordingBase):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RecordingsListResponse(BaseModel):
+    recordings: List[RecordingResponse]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int

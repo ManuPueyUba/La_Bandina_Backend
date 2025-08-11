@@ -20,3 +20,4 @@ class User(Base):
     # Relationships
     compositions = relationship("Composition", back_populates="owner")
     key_mappings = relationship("KeyMapping", back_populates="user")
+    recordings = relationship("Recording", back_populates="user")
